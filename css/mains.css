@@ -1,0 +1,45 @@
+.noUi-connect {
+	background: rgb(54, 162, 235);
+}
+
+.btn-primary {
+	background-color: rgb(54, 162, 235);
+	border-color: rgb(54, 162, 235);
+}
+
+.btn-primary:hover, .btn-primary:focus {
+	background-color: rgb(20, 131, 204);
+	border-color: rgb(20, 131, 204);
+}
+
+.slider-styled,
+.slider-styled .noUi-handle {
+	max-height: .75em;
+    box-shadow: none;
+}
+
+/* Hide markers on slider handles */
+.slider-styled .noUi-handle::before,
+.slider-styled .noUi-handle::after {
+    display: none;
+}
+
+.slider-square {
+    border-radius: 0;
+}
+
+.slider-square .noUi-handle {
+    border-radius: 0;
+    background: grey;
+    height: .75em;
+    width: .75em;
+    top: -1px;
+    right: -.75em;
+}
+
+.noUi-tooltip {
+    display: none;
+}
+.noUi-active .noUi-tooltip {
+    display: block;
+}
