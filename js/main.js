@@ -997,6 +997,14 @@ let buildDIFFS;
 			}),
 			byOrgCreateDonut(pageObj2, {
 				dataFunc: function (row) {
+					// console.log(row);
+					return row.testName[0];
+					// return 0;
+				}, 
+				title: "Test Type"
+			}),
+			byOrgCreateDonut(pageObj2, {
+				dataFunc: function (row) {
 					let value = Math.max.apply(null, row.falsePositive);
 					if (value === 1) {
 						return "False Positive";
@@ -1011,7 +1019,7 @@ let buildDIFFS;
 				dataFunc: function (row) {
 					return row.visitTubes;
 				},
-				title: "Positive Tubes"
+				title: "Positive Tubes for Infection"
 			}),
 			byOrgCreateDonut(pageObj2, {
 				dataFunc: function (row) {
@@ -1031,6 +1039,7 @@ let buildDIFFS;
 				});
 				return ret;
 			})
+			console.log("last bottom filter", pageObj2.filtered);
 			pageObj2.elements.forEach(a => a.update());
 		};
 
