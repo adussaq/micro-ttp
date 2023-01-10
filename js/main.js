@@ -41,7 +41,9 @@ let globalTypes = {};
 
 	//	window for grouping cultures
 	// const CTXWINDOW = 2 * 24 * 60 * 60 * 1000; // 2 days
-	const CTXWINDOW = 7 * 24 * 60 * 60 * 1000; // 7 days
+	const CTXWINDOW = 7.05 * 24 * 60 * 60 * 1000; // 7.05 days - specifically to catch one outlier visit
+
+	// 7.05 gives 4787 "visits"; 7 days gives 4790 "visits"
 
 	const CHART1 = $("#chartRow");
 	const CHART2 = chartRow2;
@@ -298,7 +300,6 @@ let globalTypes = {};
 				}
 			}
 		});
-
 
 		// console.log(myChart.options.scales)
 
@@ -1170,7 +1171,7 @@ let globalTypes = {};
 		let byVisitOrg = buildGroups(dataStoreForGroup2.data, dataStoreForGroup2.alldata.data);
 
 		//build based on one pt for testing
-		// let byVisitOrg = buildGroups([dataStoreForGroup2.data[1912]], [dataStoreForGroup2.alldata.data[1912]]);
+		// let byVisitOrg = buildGroups([dataStoreForGroup2.data[299]], [dataStoreForGroup2.alldata.data[299]]);
 		
 		console.log("New comparisons", DIFFS.new)
 		console.log("Organized by organisms", byVisitOrg);
