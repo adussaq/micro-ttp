@@ -1,5 +1,7 @@
 let buildDIFFS;
 
+let globalTypes = {};
+
 (function() {
 	'use strict';
 
@@ -151,6 +153,31 @@ let buildDIFFS;
 		return ret;
 	};	
 
+	const simplifyTubeType = function (arr) {
+			// does not actually work...
+		return arr.map(function (row) {
+			row = JSON.parse(JSON.stringify(row));
+			if (typeof row[TN] !== "String") {
+				let atype = "";
+				let str = row[TN].join();
+				if (str.match(/[^n]aerobic|^aerobic/i)) {
+					atype = "Aerobic";
+				}
+				if (str.match(/anaerobic/i)) {
+					if (atype.length > 0) {
+						atype = "Both";
+					} else {
+						atype = "Anaerobic";
+					}
+				}
+				if (atype) {
+					row[TN] = atype;
+				}
+			}
+			return row;
+		});
+	};
+
 	const addChart = function(addElems, title, CHART) {
 		let $elem = $('<canvas>');
 		$('<div>', {
@@ -192,6 +219,7 @@ let buildDIFFS;
 
 			let labelsArr = [];
 			let valuesArr = [];
+			min = Math.max(0, min); // Make sure -0.25 does not show up.
 			for (let i = min; i <= max + .1; i += 0.25) {
 				let val = 0;
 				if (hashOfTimes.hasOwnProperty(i)) {
@@ -334,6 +362,8 @@ let buildDIFFS;
 						countOut += 1;
 					}
 				});
+				
+
 				// console.log(countOut, minCount);
 				if (countOut < minCount) {
 					ddArr.push(row);
@@ -510,32 +540,23 @@ let buildDIFFS;
 	};
 
 	const getTestName = function (arr) {
-		let Aerobic = false;
-		let Anaerobic = false;
-		let retString = "";
-		arr.forEach(function (test) {
-			if (test.match(/Anaerobic/i)) {
-				Anaerobic = true;
-			} else if (test.match(/Aerobic/i)) {
-				Aerobic = true
-			}
-		});
-		if (Aerobic) {
-			retString += "Aerobic"
+		let atype = "";
+		let str = arr.join();
+		if (str.match(/[^n]aerobic|^aerobic/i)) {
+			atype = "Aerobic";
 		}
-		if (Anaerobic) {
-			if (retString) {
-				retString += " + Anaerobic";
+		if (str.match(/anaerobic/i)) {
+			if (atype.length > 0) {
+				atype = "Both";
 			} else {
-				retString += "Anaerobic";
+				atype = "Anaerobic";
 			}
 		}
-
-		if (!retString) {
-			retString = "Unknown"
+		if (atype) {
+			return atype;
 		}
 
-		return retString;
+		return "Unknown";
 	}
 
 	const buildGroups = function (data, alldata) {
@@ -545,6 +566,9 @@ let buildDIFFS;
 		data.forEach(function (person, allDataIndex) {
 			// let person = data[3221]; // test place
 			let byWindow = [];
+			// if (allDataIndex === 146) {
+			// 	console.warn('looking here before grouping', JSON.parse(JSON.stringify(person)));
+			// }
 			person.forEach(function (culture, jj) {
 				culture.personIndex = allDataIndex;
 				culture.personLink = alldata[allDataIndex];
@@ -560,16 +584,25 @@ let buildDIFFS;
 						}
 					});
 				});
+
 				if (partnerFound) {
 					byWindow[partnerFound - 1].push(culture);
 				} else {
 					byWindow.push([culture]);
 				}
 			});
+			// if (allDataIndex === 1980) {
+			// 	console.log("check this out", byWindow, person);
+			// }
 			uniqueCultures = uniqueCultures.concat(byWindow);
 		});
 
 		//console.log('partnered up', uniqueCultures);
+
+		console.log('in and out size', data.length, uniqueCultures.length);
+
+		// unique cultures are unique culture groups based on the number of days between
+		// positive tests
 
 		//now fold culture results when possible and simplify data object
 		return uniqueCultures.map(function (ctxGroup) {
@@ -583,7 +616,12 @@ let buildDIFFS;
 			// 6: ['Organism Name']
 
 			let output = [];
+			
 			let visitTubes = ctxGroup.length;
+
+			// if (ctxGroup[0].personIndex === 146) {
+			// 	console.warn('looking here, should be 2, actually 3', JSON.parse(JSON.stringify(ctxGroup)));
+			// }
 
 			// attempt to simplify organisms
 			let uniqueOrganisms;
@@ -626,6 +664,7 @@ let buildDIFFS;
 			let uniqueOrgsHash = {};
 			organisms.forEach(function (orgArr) {
 				let org = orgArr[0];
+
 				uniqueOrgsHash[org] = uniqueOrgsHash[org] || {
 					testName: [],
 					year: [],
@@ -655,44 +694,95 @@ let buildDIFFS;
 				uniqueOrgsHash[org].falsePositive.push(ctxGroup[orgArr[1]][FP]);
 				uniqueOrgsHash[org].organismTubes += 1;
 			});
+
+			// Looking for duplication event for this case
+			if (ctxGroup[0][2] === 'Wed Oct 29 2008 11:05:00 GMT-0700 (Pacific Daylight Time)') {
+				console.log("looking here...", ctxGroup, uniqueOrgsHash, organisms);
+			}
 			
 			//return final object
 			return Object.keys(uniqueOrgsHash).map(org => uniqueOrgsHash[org]);
 
-		}).reduce((a, b) => a.concat(b));
-	};
+		})
+		// .reduce((a, b) => a.concat(b))
+		.map(function (cultureGroup) {
+			return cultureGroup.map(function (culture) {
+				let linkedDraws = [];
+				let linkedHash = {};
+				let times = JSON.parse(JSON.stringify(culture.collectTime));
+				let allTimes = culture.dataLink.map(a => a[2]);
 
-	const byOrgMaxDays = function () {
+				let added = true;
+
+				while(added) {
+					added = false;
+					times.sort(function (a, b) {
+						return new Date(a) - new Date(b);
+					});
+					let windowStart = new Date(times[0]) * 1 - CTXWINDOW;
+					let windowStop = new Date(times[times.length - 1]) * 1 + CTXWINDOW;
+
+					allTimes = allTimes.map(function (time, ind) {
+						let thisTime = new Date(time);
+						if (thisTime * 1 > windowStart && thisTime * 1 < windowStop) {
+							linkedHash[ind] = 1;
+							times.push(time);
+							added = true;
+						}
+					});
+				}
+
+				culture.linkedDraws = Object.keys(linkedHash).map(a => culture.dataLink[a]);
+				return culture;
+			});
+		});
 	};
 
 	const byOrgCreateDonut = function (pageObj, functionObj) {
 		let allowed = {};
 		let retObj = {
-			filter: pageObj.data.map(row => 1)
+			filter: pageObj.data.map(rows => rows.map(row => 1))
 		};
+
+		// console.log(pageObj.data, retObj.filter);
+		// throw "stopping";
+
 
 		let getFilteredData = function () {
 			let ddArr = [];
-			pageObj.data.forEach(function (row, ind) {
+			pageObj.data.forEach(function (rows, ind) {
 				let countOut = 0;
 				let minCount = 1;
-				if (!retObj.filter[ind]) {
-					minCount += 1;
-				}
-				pageObj.elements.forEach(function (pageElem) {
-					if (!pageElem.filter[ind]) {
-						countOut += 1;
-					}
-				});
-				// console.log(countOut, minCount);
-				if (countOut < minCount) {
-					ddArr.push(row);
-				}
+				let outRows = rows.filter(function (row, rowindex) {
+					// now we need to check if this is filtered out by something else or by this filter
+					let countOut = 0;
+					let minCount = 1;
 
+					// If filtered out only here, then we will keep it 
+					if (!retObj.filter[ind][rowindex]) {
+						minCount += 1;
+					}
+
+					pageObj.elements.forEach(function (pageElem) {
+						if (pageElem.filter[ind][rowindex] === 0) {
+							countOut += 1;
+						}
+					});
+
+					if (countOut < minCount) { // if multiple filters have ruled this out
+						return true;
+					}
+					return false;
+				})
+
+				// console.log(countOut, minCount);
+				if (outRows.length) {
+					ddArr.push(outRows);
+				}
 			});
-			// console.log(ddArr);
+			// console.log("is this filtered??", ddArr);
 			return ddArr;
-		}
+		};
 
 		let getDataArr = function() {
 			let data = getFilteredData();
@@ -702,12 +792,25 @@ let buildDIFFS;
 			// 6: ['Organism Name']
 			data.forEach(function(row) {
 				let cat = functionObj.dataFunc(row);
-				organismTally[cat] = organismTally[cat] || 0;
-				organismTally[cat] += 1;
+				if (!Array.isArray(cat)) {
+					cat = [cat];
+				}
+				cat.forEach(function (onecat) {
+					organismTally[onecat] = organismTally[onecat] || 0;
+					organismTally[onecat] += 1;
+				})
 			});
 
 			let labelSort = functionObj.sort || function (a, b) {
-				return organismTally[b] * 1 - organismTally[a] * 1;
+				let diff = organismTally[b] * 1 - organismTally[a] * 1;
+				if (diff === 0) {
+					if (a.toUpperCase() > b.toUpperCase()) {
+						diff = 1
+					} else if (b.toUpperCase() > a.toUpperCase()) {
+						diff = -1;
+					}
+				}
+				return diff;
 			};
 
 			let organismTallyArr = Object.keys(organismTally).sort(labelSort);
@@ -748,15 +851,29 @@ let buildDIFFS;
 		};
 
 		let filterOnAllowed = function () {
-			retObj.filter = pageObj.data.map(function (row) {
-				let ret = 0;
-				let tt = functionObj.dataFunc(row);
+			retObj.filter = pageObj.data.map(function (rows) {
+				let retArr = [];
 
-				if (allowed[tt]) {
-					ret = 1;
-				}
-				return ret;
+				retArr = rows.map(function (row) {
+					let ret = 0;
+					let tt = functionObj.dataFunc([row]);
+
+					if (!Array.isArray(tt)) {
+						tt = [tt];
+					}
+
+					tt.forEach(function (aa) {
+						if (allowed[aa]) {
+							ret = 1;
+						}
+					});
+
+					return ret;
+				});
+
+				return retArr;
 			});
+			console.log('filtered...', retObj.filter, pageObj.data)
 		};
 
 		let chartData = getDataArr(pageObj.data);
@@ -804,7 +921,7 @@ let buildDIFFS;
 					}
 					filterOnAllowed();
 					pageObj.update();
-				    console.log(allowed, organismClicked, evt.native.shiftKey, evt.native.metaKey, evt.native.ctrlKey);
+				    console.log("allowed", allowed, organismClicked, evt.native.shiftKey, evt.native.metaKey, evt.native.ctrlKey);
 				}
 			}
 		};
@@ -816,7 +933,7 @@ let buildDIFFS;
 			});
 			filterOnAllowed();
 			pageObj.update();
-		})
+		});
 
 		var ctx = $elem[0];
 		var myChart = new Chart(ctx, config);
@@ -862,6 +979,7 @@ let buildDIFFS;
 
 			let labelsArr = [];
 			let valuesArr = [];
+			min = Math.max(0, min); // make sure -0.25 does not show up
 			for (let i = min; i <= max + .1; i += 0.25) {
 				let val = 0;
 				if (hashOfTimes.hasOwnProperty(i)) {
@@ -881,6 +999,8 @@ let buildDIFFS;
 		// let arrOfTimes = Object.keys(hashOfTimes).map(a => [a * 1, hashOfTimes[a]]).sort((a, b) => a[0] - b[0]);
 
 		let dataObj = getDataArr(pageObj.data);
+
+		console.log('for bar chart...', dataObj)
 
 		var ctx = $elem[0];
 		var myChart = new Chart(ctx, {
@@ -953,7 +1073,7 @@ let buildDIFFS;
 				// console.log(myChart.data.datasets);
 				myChart.update();
 			},
-			filter: pageObj.data.map(a => 1)
+			filter: pageObj.data.map(a => a.map(b => 1))
 		};
 
 		noUiSlider.create($slider[0], {
@@ -967,16 +1087,18 @@ let buildDIFFS;
 			}
 		}).on('change', function(evt) {
 
-			let filterOut = {};
+			// let filterOut = {};
 			// 3: "Hours to positivity"
 			console.log(evt);
-			pageObj.data.forEach(function(row, ind) {
-				let days = functionObj.dataFunc(row) / 24;
-				if (days < evt[0] || days > evt[1]) {
-					retObj.filter[ind] = 0;
-				} else {
-					retObj.filter[ind] = 1;
-				}
+			pageObj.data.forEach(function(rows, ind) {
+				rows.forEach(function (row, rowind) {
+					let days = functionObj.dataFunc([row]) / 24;
+					if (days < evt[0] || days > evt[1]) {
+						retObj.filter[ind][rowind] = 0;
+					} else {
+						retObj.filter[ind][rowind] = 1;
+					}
+				});
 			});
 			console.log(evt);
 			pageObj.update();
@@ -986,6 +1108,7 @@ let buildDIFFS;
 
 	const buildPage = function(data) {
 		console.log("Data in", data);
+		let dataStoreForGroup2 = JSON.parse(JSON.stringify(data));
 		let flattened = data.data.reduce((a, b) => a.concat(b));
 
 		// 0: "Test Name"
@@ -1005,20 +1128,27 @@ let buildDIFFS;
 		// 6: "Test Positivity Date/Time"
 		// 7: "Hours to positivity"
 
+		let dataObjOne = JSON.parse(JSON.stringify(data));
+		dataObjOne.data = dataObjOne.data.map(a => simplifyTubeType(a));
+		let flattenedOne = JSON.parse(JSON.stringify(flattened));
+		flattenedOne = simplifyTubeType(flattenedOne);	
+
+		console.log(dataObjOne, flattenedOne)
+
 		let pageObj = {
 			original: {
 				data: data.data,
-				flat: flattened
+				flat: simplifyTubeType(flattened)
 			},
 			elements: [],
-			data: JSON.parse(JSON.stringify(data)),
-			flat: JSON.parse(JSON.stringify(flattened))
+			data: dataObjOne,
+			flat: flattenedOne
 		};
 		pageObj.elements = [
 			createByDay(pageObj),
 			createDonut(pageObj, ON, {title: "Organism Isloated"}),
-			createDonut(pageObj, FP, {title: "Positive by export", sort: numSortUp, labels:{"0": "True Positive", "1": "False Positive"}}),
-			createDonut(pageObj, TN, {title: "Test Type"}),
+			createDonut(pageObj, FP, {title: "Algorithmically True/False Positive", sort: numSortUp, labels:{"0": "True Positive", "1": "False Positive"}}),
+			createDonut(pageObj, TN, {title: "Positive Test Type"}),
 			createDonut(pageObj, CY, {title: "Positive Cases By Year", sort: numSortUp}),
 		];
 		pageObj.update = function() {
@@ -1037,7 +1167,11 @@ let buildDIFFS;
 		console.log("Page object", pageObj);
 
 		// build out group cases
-		let byVisitOrg = buildGroups(data.data, data.alldata.data);
+		let byVisitOrg = buildGroups(dataStoreForGroup2.data, dataStoreForGroup2.alldata.data);
+
+		//build based on one pt for testing
+		// let byVisitOrg = buildGroups([dataStoreForGroup2.data[1912]], [dataStoreForGroup2.alldata.data[1912]]);
+		
 		console.log("New comparisons", DIFFS.new)
 		console.log("Organized by organisms", byVisitOrg);
 
@@ -1057,79 +1191,194 @@ let buildDIFFS;
 		// visitTubes
 		// organismTubes
 
+		// throw pageObj2;
+
+		const PRINTER = -1;
+
 		pageObj2.elements = [
 			byOrgMinDays(pageObj2, {
+				dataFunc: function (rows) {
+					let theVals = rows.map(function (row) {
+						// row = rows[0]; // should be the same for all organisms?
+						let minPosDate = new Date();
+						let minPosDrawDate = new Date();
+						let minDrawDate = new Date();
+						let thisOrganism = row.organisms;
+						// let negs = [];
+						// let poss = [];
+						row.linkedDraws.forEach(function (entry) {
+							let drawDate = new Date(entry[2])
+							minDrawDate = Math.min(minDrawDate, drawDate);
+							if (!entry[3].match(/Neg/i)) {
+								// check to see if organism is a match
+								let organismList = entry[4];
+								let match = false;
+								organismList.forEach(function (organism) {
+									if (equivalent(organism, thisOrganism)) {
+										match = true;
+									}
+								});
+								if (match) {
+									let posDate = new Date(entry[5][1]);
+									if (!entry[5][1]) {
+										posDate = new Date(drawDate * 1 + 1000 * 60 * 60 * 24 * 4.5); // default in 4.5 days
+										// console.log("No positive date from bactec file?", row, posDate);
+									}
+									minPosDate = Math.min(minPosDate, posDate);
+									minPosDrawDate = Math.min(minPosDrawDate, drawDate);
+								}
+							}
+						});
+						let value2 = (minPosDate - minPosDrawDate) / 1000 / 60 / 60;
+						if (value2 > 24 * 10) {
+							console.log("noise", (new Date(minPosDate)).toLocaleDateString(), (new Date(minDrawDate)).toLocaleDateString(), value2 / 24, row);
+						}
+						// console.log(value2, row, minPosDate, minPosDrawDate)
+						let value = Math.max.apply(null, row.hoursToPositive);
+						return value2;
+					});
+					let outval = theVals.reduce(function (a, b) {
+						if (a === b) {
+							return a;
+						} else {
+							// console.log("different...", theVals, rows);
+							return Math.max(a, b);
+						}
+					});
+
+					if (rows[0].indexLink === PRINTER) {
+						console.log('make sure this is right...', 'min days to dx', rows, outval, theVals);
+					}
+					return outval;
+				},
+				label: "Days to Diagnosis (By Organism)"
+			}),
+			byOrgMinDays(pageObj2, {
 				dataFunc: function (row) {
-					let value = Math.min.apply(null, row.hoursToPositive);
+					let value = Infinity;
+					row.forEach(function (organism) {
+						let minvalue = Math.min.apply(null, organism.hoursToPositive);
+						value = Math.min(minvalue, value);
+					});
+
+					if (row[0].indexLink === PRINTER) {
+						console.log('make sure this is right...', 'min days', row, value);
+					}
+					// let value = Math.min.apply(null, row.hoursToPositive);
 					return value;
 				},
 				label: "Minimum days to positivity"
 			}),
 			byOrgMinDays(pageObj2, {
 				dataFunc: function (row) {
-					let value = Math.max.apply(null, row.hoursToPositive);
+					let value = -Infinity;
+					row.forEach(function (organism) {
+						let maxvalue = Math.max.apply(null, organism.hoursToPositive);
+						value = Math.max(maxvalue, value);
+					});
+					if (row[0].indexLink === PRINTER) {
+						console.log('make sure this is right...', 'max days', row, value);
+					}
 					return value;
 				},
 				label: "Maximum days to positivity"
 			}),
 			byOrgCreateDonut(pageObj2, {
 				dataFunc: function (row) {
-					return row.organisms;
+					// if (row[0].indexLink === PRINTER) {
+					// 	console.log('make sure this is right...', 'max days', row, row.map(a => a.organisms));
+					// }
+					return row.map(a => a.organisms);
 				},
 				title: "Organism Isloated"
 			}),
 			byOrgCreateDonut(pageObj2, {
 				dataFunc: function (row) {
 					// console.log(row);
-					return row.testName[0];
+
+					let thisOut = row.map(a=> a.testName).reduce(function (a, b) {
+						if (a[0] === b[0]) {
+							 return [a];
+						}
+						return ["Both"];
+					})[0];
 					// return 0;
+					if (row[0].indexLink === PRINTER) {
+						console.log('make sure this is right...', 'max days', row, thisOut);
+					}
+
+					return thisOut;
+
 				}, 
-				title: "Test Type"
+				title: "Positive Test Type"
 			}),
 			byOrgCreateDonut(pageObj2, {
 				dataFunc: function (row) {
-					let value = Math.max.apply(null, row.falsePositive);
-					if (value === 1) {
-						return "False Positive";
+					// let sol = "True Positive";
+					// row.map(function (groups) {
+					// 	let value = Math.max.apply(null, groups.falsePositive);
+					// 	if (value === 1) {
+					// 		sol = "False Positive";
+					// 	}
+					// });
+
+					let sol = "False Positive";
+					row.map(function (groups) {
+						let value = Math.max.apply(null, groups.falsePositive);
+						if (value !== 1) {
+							sol = "True Positive";
+						}
+					});
+
+					if (row[0].indexLink === PRINTER) {
+						console.log('make sure this is right...', 'max days', row, sol);
 					}
-					return "True Positive";
+
+					return sol;
 				},
-				title: "Positive by export",
+				title: "Algorithmically True/False Positive",
 				sort: numSortUp,
 				// labels:{"0": "True Positive", "1": "False Positive"}
 			}),
 			byOrgCreateDonut(pageObj2, {
 				dataFunc: function (row) {
-					return row.visitTubes;
+					// Just return the result from the first organism
+					return row[0].visitTubes;
 				},
-				title: "Positive Tubes for Infection"
+				title: "Positive Draws for Infection"
 			}),
 			byOrgCreateDonut(pageObj2, {
 				dataFunc: function (row) {
-					return row.organismTubes;
+					// Just return the result from the first organism
+					return row[0].organismTubes;
 				},
-				title: "Positive Tubes With Organism"
+				title: "Positive Draws With Organism"
 			}),
 		]
 
 		pageObj2.update = function() {
-			pageObj2.filtered = pageObj2.data.filter(function(row, ind) {
-				let ret = true;
-				pageObj2.elements.forEach(function (elemObj) {
-					if (!elemObj.filter[ind]) {
-						ret = false;
-					}
-				});
-				return ret;
-			})
+			pageObj2.filtered = [];
+			pageObj2.data.forEach(function(rows, ind) {
+				let outer = rows.filter(function (rows, rowind) {
+					let stillin = true;
+					pageObj2.elements.forEach(function (elemObj) {
+						if (elemObj.filter[ind][rowind] === 0) {
+							stillin = false;
+						}
+					});
+					return stillin;
+				})
+				if (outer.length) {
+					pageObj2.filtered.push(outer);
+				}
+			});
+
 			console.log("last bottom filter", pageObj2.filtered);
 
 			makeTimeLines(pageObj2.filtered);
 
 			pageObj2.elements.forEach(a => a.update());
 		};
-
-		
 	};
 
 	const makeTimeLines = function (list) {
@@ -1139,6 +1388,7 @@ let buildDIFFS;
 		let $container = $('#visualization');
 		let buildOnce = false;
 		$container.empty();
+		$('.popover').remove();
 		
 		let $btnHold = $('<div class="d-grid gap-2">');
 		let $btn = $('<button>', {
@@ -1159,7 +1409,25 @@ let buildDIFFS;
 	};
 
 	const makeATimeline = function (result) {
-		let patientData = result.dataLink;
+		console.log('here is the result in', result);
+		// return;
+		let patientData = JSON.parse(JSON.stringify(result[0].dataLink));
+
+		patientData.map(function (row) {
+			if (row[3].match(/Pos/i) && row[5].length === 0) {
+				// for the few cases where there is no data on bactec ttp
+				// default in 4.5 days, all of these have multiple positives
+				let plusDays = new Date(new Date(row[2]) + 4.5 * 24 * 60 * 60 * 1000);
+				row[5] = [
+					["unknown"],
+					plusDays.toString(),
+					108.014776974,
+					plusDays.toString(),
+					108.014776974
+				];
+				console.log('adding in fake data (4.5 days, 108 hrs)', patientData);
+			}
+		});
 
 		let minYear = patientData.map(dd => dd[CY]).reduce(function (a, b) {
 			return Math.min(a * 1, b * 1);
@@ -1212,7 +1480,7 @@ let buildDIFFS;
 
 		// console.log("items", itemsArr, new Date(baseDate), new Date(maxDate));
 
-		let startTime = new Date(new Date(result.collectTime[0]) * 1 + baseDate * 1 - minDate * 1 - 1000 * 60 * 60 * 24);
+		let startTime = new Date(new Date(result[0].collectTime[0]) * 1 + baseDate * 1 - minDate * 1 - 1000 * 60 * 60 * 24);
 
 		// start
 		var container = document.getElementById('visualization');
@@ -1238,7 +1506,10 @@ let buildDIFFS;
 				itemsArr[event.item].popover = true;
 				let orgString = "Negative";
 				if (itemsArr[event.item].full) {
-					orgString = itemsArr[event.item].full + "<br />" + itemsArr[event.item].ttp + " hours to positive";
+					orgString = itemsArr[event.item].full + "<br />" + Math.round(itemsArr[event.item].ttp / 24 * 10) / 10 + " days to positive";
+				}
+				if (itemsArr[event.item].ttp === 108.014776974) {
+					orgString += "*<br />* No time to positive known due to test issue, assumed 4.5 days for analysis.";
 				}
 				orgString += "<br />Collection: " + itemsArr[event.item].start.toString();
 				let maxLoop = 3;
