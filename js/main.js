@@ -1471,10 +1471,15 @@ let globalTypes = {};
 				let endDate = new Date(theDate * 1 + sample[EXTRA][EXTRA_HP] * 60 * 60 * 1000)
 				maxDate = Math.max(maxDate, endDate);
 				baseEvt.end = endDate.toString();
+				// if (isNaN(baseEvt.end)) {
+				console.log("NaN with pos?", baseEvt);
+				// }
 				baseEvt.style = "min-width: 5rem;";
 			} else {
 				// baseEvt.group = "Negtive"; // did not work.
 				baseEvt.content = "NEG";
+				// baseEvt.end = baseEvt.start;
+				console.log("NaN with neg?", baseEvt);
 			}
 			return baseEvt;
 		});
@@ -1492,9 +1497,12 @@ let globalTypes = {};
 			zoomMax: 1000 * 60 * 60 * 24 * 365 * 2,
 			zoomFriction: 8,
 			start: startTime,
-			end: new Date(startTime + 1000 * 60 * 60 * 24 * 7)
+			end: new Date(startTime * 1 + 1000 * 60 * 60 * 24 * 7)
 		};
+		
 		let items = new vis.DataSet(itemsArr);
+		// let items = new vis.DataSet(itemsArr.filter(a => a.end));
+		// console.log('before process??', itemsArr, 'after process??', items);
 		let timeline = new vis.Timeline(container, items, options);
 
 		timeline.on('itemover', function (event) {
