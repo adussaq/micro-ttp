@@ -1324,12 +1324,19 @@ let globalTypes = {};
 					// });
 
 					let sol = "False Positive";
+					// let maxVal = 0;
 					row.map(function (groups) {
-						let value = Math.max.apply(null, groups.falsePositive);
+						// let maxVal1 = Math.max.apply(null, groups.falsePositive);
+						// maxVal = Math.max(maxVal, maxVal1);
+						let value = Math.min.apply(null, groups.falsePositive);
 						if (value !== 1) {
 							sol = "True Positive";
 						}
 					});
+
+					// if (sol === "True Positive" && maxVal) {
+					// 	console.log("added?", row);
+					// }
 
 					if (row[0].indexLink === PRINTER) {
 						console.log('make sure this is right...', 'max days', row, sol);
@@ -1346,7 +1353,7 @@ let globalTypes = {};
 					// Just return the result from the first organism
 					return row[0].visitTubes;
 				},
-				title: "Positive Draws for Infection"
+				title: "Positive Draws With Any Growth"
 			}),
 			byOrgCreateDonut(pageObj2, {
 				dataFunc: function (row) {
